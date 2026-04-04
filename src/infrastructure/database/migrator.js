@@ -21,8 +21,10 @@ import * as m005 from './migrations/005_create_role_permissions.js';
 import * as m006 from './migrations/006_seed_default_roles_permissions.js';
 import * as m007 from './migrations/007_create_transactions.js';
 import * as m008 from './migrations/008_create_audit_logs.js';
+import * as m009 from './migrations/009_create_idempotent_requests.js';
+import * as m010 from './migrations/010_create_budgets.js';
 
-const migrations = [m001, m002, m003, m004, m005, m006, m007, m008];
+const migrations = [m001, m002, m003, m004, m005, m006, m007, m008, m009, m010];
 
 /**
  * Ensures the _migrations tracking table exists.

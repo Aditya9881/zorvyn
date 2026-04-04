@@ -111,4 +111,59 @@ export class SqliteAuditLogRepository {
       return row;
     });
   }
+
+  /**
+   * Find all audit logs with optional filters and pagination.
+   * @param {object} [filters={}]
+   * @param {number} [filters.actorId]
+   * @param {string} [filters.resourceType]
+   * @param {number} [filters.resourceId]
+   * @param {number} [filters.limit=50]
+   * @param {number} [filters.offset=0]
+   * @returns {object[]}
+   */
+  findAll(filters = {}) {
+    const clauses = [];
+    const params = [];
+    const limit = Math.min(filters.limit || 50, 200);
+    const offset = filters.offset || 0;
+
+    if (filters.actorId) {
+      clauses.push('actor_id = ?');
+      params.push(filters.actorId);
+    }
+
+    if (filters.resourceType) {
+      clauses.push('resource_type = ?');
+      params.push(filters.resourceType);
+    }
+
+    if (filters.resourceId) {
+      clauses.push('resource_id = ?');
+      params.push(filters.resourceId);
+    }
+
+    const whereClause = clauses.length > 0
+      ? `WHERE ${clauses.join(' AND ')}`
+      : '';
+
+    const rows = this.db
+      .prepare(
+        `SELECT id, actor_id AS actorId, actor_email AS actorEmail,
+                action, resource_type AS resourceType, resource_id AS resourceId,
+                metadata, ip_address AS ipAddress, created_at AS createdAt
+         FROM audit_logs
+         ${whereClause}
+         ORDER BY id DESC
+         LIMIT ? OFFSET ?`
+      )
+      .all(...params, limit, offset);
+
+    return rows.map((row) => {
+      if (row.metadata) {
+        try { row.metadata = JSON.parse(row.metadata); } catch { /* keep */ }
+      }
+      return row;
+    });
+  }
 }

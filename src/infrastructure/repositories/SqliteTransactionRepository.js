@@ -257,4 +257,59 @@ export class SqliteTransactionRepository {
       )
       .all(...params);
   }
+
+  /**
+   * Monthly trend bucketing for line charts.
+   * Groups by YYYY-MM using SUBSTR(date, 1, 7).
+   * Uses idx_transactions_user_date composite index.
+   *
+   * @param {number} userId
+   * @param {string} year - e.g., '2026'
+   * @returns {Array<{ month: string, income: number, expense: number, transactionCount: number }>}
+   */
+  getTrends(userId, year) {
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    return this.db
+      .prepare(
+        `SELECT
+           SUBSTR(date, 1, 7) AS month,
+           COALESCE(SUM(CASE WHEN type = 'income'  THEN amount ELSE 0 END), 0) AS income,
+           COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) AS expense,
+           COUNT(*) AS transactionCount
+         FROM transactions
+         WHERE user_id = ?
+           AND deleted_at IS NULL
+           AND date >= ?
+           AND date <= ?
+         GROUP BY SUBSTR(date, 1, 7)
+         ORDER BY month ASC`
+      )
+      .all(userId, startDate, endDate);
+  }
+
+  /**
+   * Stream all transactions matching filters.
+   * Uses .iterate() for lazy evaluation — rows fetched one at a time.
+   * Designed for CSV export of 10K+ records without memory issues.
+   *
+   * @param {number} userId
+   * @param {object} [filters={}]
+   * @returns {Generator} lazy row iterator
+   */
+  streamAll(userId, filters = {}) {
+    const { clauses, params } = this._buildFilters(userId, filters);
+    const whereClause = clauses.join(' AND ');
+
+    return this.db
+      .prepare(
+        `SELECT id, type, category, amount AS amountInCents,
+                note, date, created_at AS createdAt
+         FROM transactions
+         WHERE ${whereClause}
+         ORDER BY date ASC, id ASC`
+      )
+      .iterate(...params);
+  }
 }

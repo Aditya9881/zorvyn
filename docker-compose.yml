@@ -1,0 +1,28 @@
+# ═══════════════════════════════════════════════════════════════
+# Zorvyn Financial Dashboard — Docker Compose
+#
+# Persistent SQLite storage via volume mount at ./data/
+# WARNING: Change the JWT secrets before deploying to production!
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  zorvyn-api:
+    build: .
+    container_name: zorvyn-api
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data    # Persistent SQLite database
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/zorvyn.db
+      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET:-prod-access-secret-change-me}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET:-prod-refresh-secret-change-me}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

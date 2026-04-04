@@ -169,4 +169,46 @@ export class TransactionController {
       next(error);
     }
   };
+
+  /**
+   * GET /api/v1/analytics/trends
+   */
+  getTrends = (req, res, next) => {
+    try {
+      const year = req.query.year || new Date().getFullYear().toString();
+      const trends = this.transactionService.getTrends(req.user.id, year);
+
+      return res.status(200).json({
+        status: 'success',
+        data: { trends, year },
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * GET /api/v1/transactions/export — Stream CSV download
+   */
+  exportCSV = (req, res, next) => {
+    try {
+      const filters = {
+        type: req.query.type,
+        category: req.query.category,
+        startDate: req.query.startDate,
+        endDate: req.query.endDate,
+        search: req.query.search,
+      };
+
+      const filename = `transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+      const stream = this.transactionService.exportCSV(req.user.id, filters);
+      stream.pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

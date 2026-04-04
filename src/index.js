@@ -24,26 +24,36 @@ import { SqliteRoleRepository } from './infrastructure/repositories/SqliteRoleRe
 import { SqlitePermissionRepository } from './infrastructure/repositories/SqlitePermissionRepository.js';
 import { SqliteTransactionRepository } from './infrastructure/repositories/SqliteTransactionRepository.js';
 import { SqliteAuditLogRepository } from './infrastructure/repositories/SqliteAuditLogRepository.js';
+import { SqliteIdempotencyRepository } from './infrastructure/repositories/SqliteIdempotencyRepository.js';
+import { SqliteBudgetRepository } from './infrastructure/repositories/SqliteBudgetRepository.js';
 
 // Services
 import { AuthService } from './application/services/AuthService.js';
 import { UserService } from './application/services/UserService.js';
 import { TransactionService } from './application/services/TransactionService.js';
+import { BudgetService } from './application/services/BudgetService.js';
+import { InsightService } from './application/services/InsightService.js';
 
 // Controllers
 import { AuthController } from './presentation/controllers/AuthController.js';
 import { TransactionController } from './presentation/controllers/TransactionController.js';
 import { UserController } from './presentation/controllers/UserController.js';
+import { BudgetController } from './presentation/controllers/BudgetController.js';
+import { AuditLogController } from './presentation/controllers/AuditLogController.js';
+import { InsightController } from './presentation/controllers/InsightController.js';
 
 // Routes
 import { createAuthRoutes } from './presentation/routes/authRoutes.js';
 import { createTransactionRoutes } from './presentation/routes/transactionRoutes.js';
 import { createAnalyticsRoutes } from './presentation/routes/analyticsRoutes.js';
 import { createUserRoutes } from './presentation/routes/userRoutes.js';
+import { createBudgetRoutes } from './presentation/routes/budgetRoutes.js';
+import { createAuditLogRoutes } from './presentation/routes/auditLogRoutes.js';
 
 // Middleware
 import { errorHandler } from './presentation/middleware/errorHandler.js';
 import { generalLimiter, loginLimiter } from './presentation/middleware/rateLimiter.js';
+import { idempotency } from './presentation/middleware/idempotencyMiddleware.js';
 
 /**
  * Creates and configures the Express application.
@@ -76,6 +86,8 @@ export function createApp(db, opts = {}) {
   const permissionRepository = new SqlitePermissionRepository(database);
   const transactionRepository = new SqliteTransactionRepository(database);
   const auditLogRepository = new SqliteAuditLogRepository(database);
+  const idempotencyRepository = new SqliteIdempotencyRepository(database);
+  const budgetRepository = new SqliteBudgetRepository(database);
 
   const authService = new AuthService({
     userRepository,
@@ -93,15 +105,34 @@ export function createApp(db, opts = {}) {
     transactionRepository,
   });
 
+  const budgetService = new BudgetService({
+    budgetRepository,
+    transactionRepository,
+  });
+
+  const insightService = new InsightService({
+    transactionRepository,
+    budgetRepository,
+  });
+
   const authController = new AuthController(authService);
   const transactionController = new TransactionController(transactionService);
   const userController = new UserController(userService);
+  const budgetController = new BudgetController(budgetService);
+  const auditLogController = new AuditLogController(auditLogRepository);
+  const insightController = new InsightController(insightService);
 
   // ─── Routes ───────────────────────────────────────────────────
   app.use('/api/v1/auth', createAuthRoutes(authController));
-  app.use('/api/v1/transactions', createTransactionRoutes(transactionController));
-  app.use('/api/v1/analytics', createAnalyticsRoutes(transactionController));
+  app.use('/api/v1/transactions', createTransactionRoutes(transactionController, {
+    idempotencyMiddleware: idempotency(idempotencyRepository),
+  }));
+  app.use('/api/v1/analytics', createAnalyticsRoutes(transactionController, {
+    insightController,
+  }));
   app.use('/api/v1/users', createUserRoutes(userController));
+  app.use('/api/v1/budgets', createBudgetRoutes(budgetController));
+  app.use('/api/v1/audit-logs', createAuditLogRoutes(auditLogController));
 
   // ─── Health Check ─────────────────────────────────────────────
   app.get('/api/v1/health', (req, res) => {

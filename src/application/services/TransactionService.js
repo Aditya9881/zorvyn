@@ -9,6 +9,7 @@
  */
 
 import { Transaction } from '../../domain/entities/Transaction.js';
+import { PassThrough } from 'node:stream';
 import {
   NotFoundError,
   AuthorizationError,
@@ -209,6 +210,65 @@ export class TransactionService {
       totalAmount: Transaction.centsToDollars(row.totalAmount),
       count: row.count,
     }));
+  }
+
+  /**
+   * Get monthly income/expense trends for a year.
+   * Fills all 12 months — months without data get "0.00".
+   * Returns array directly mappable to a line chart.
+   *
+   * @param {number} userId
+   * @param {string} [year] - defaults to current year
+   * @returns {Array<{ month: string, income: string, expense: string, transactionCount: number }>}
+   */
+  getTrends(userId, year) {
+    const targetYear = year || new Date().getFullYear().toString();
+    const dbRows = this.transactionRepository.getTrends(userId, targetYear);
+
+    // Fill all 12 months so the frontend gets a complete, gap-free array
+    const allMonths = Array.from({ length: 12 }, (_, i) => {
+      const m = String(i + 1).padStart(2, '0');
+      return `${targetYear}-${m}`;
+    });
+
+    return allMonths.map((month) => {
+      const row = dbRows.find((r) => r.month === month);
+      return {
+        month,
+        income: Transaction.centsToDollars(row?.income ?? 0),
+        expense: Transaction.centsToDollars(row?.expense ?? 0),
+        transactionCount: row?.transactionCount ?? 0,
+      };
+    });
+  }
+
+  /**
+   * Export transactions as a CSV readable stream.
+   * Uses iterate() + PassThrough for constant memory—safe for 10K+ rows.
+   * Reuses the same _buildFilters as list() for filter consistency.
+   *
+   * @param {number} userId
+   * @param {object} [filters={}]
+   * @returns {import('node:stream').PassThrough}
+   */
+  exportCSV(userId, filters = {}) {
+    const stream = new PassThrough();
+
+    // CSV header
+    stream.write('Date,Type,Category,Amount,Note,Created At\n');
+
+    // Stream rows one at a time
+    const iterator = this.transactionRepository.streamAll(userId, filters);
+    for (const row of iterator) {
+      const dollars = Transaction.centsToDollars(row.amountInCents);
+      const escapedNote = `"${(row.note || '').replace(/"/g, '""')}"`;
+      stream.write(
+        `${row.date},${row.type},${row.category},${dollars},${escapedNote},${row.createdAt}\n`
+      );
+    }
+
+    stream.end();
+    return stream;
   }
 
   // ─── Private Helpers ─────────────────────────────────────────
