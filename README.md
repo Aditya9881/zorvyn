@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏦 Zorvyn
+# 🏦 Zorvynn
 
 **High-Integrity Financial Dashboard Backend**
 
